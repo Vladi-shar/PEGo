@@ -8,8 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-
-	// "fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -24,13 +22,6 @@ func main() {
 
 	// Create the File menu
 	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("New", func() {
-			// Action for New
-			fyne.CurrentApp().SendNotification(&fyne.Notification{
-				Title:   "Menu Action",
-				Content: "New File action triggered",
-			})
-		}),
 		fyne.NewMenuItem("Open", func() {
 			filePath, err := dialog.File().Title("Select a File").Load()
 			if err != nil {
@@ -40,44 +31,23 @@ func main() {
 				return
 			}
 
-			// // Function to get the file name
-			// getFileName := func(filePath string) string {
-			// 	return filepath.Base(filePath)
-			// }
-
-			// // Function to get the file contents
-			// getFileContents := func(filePath string) (string, error) {
-			// 	file, err := os.Open(filePath)
-			// 	if err != nil {
-			// 		return "", err
-			// 	}
-			// 	defer file.Close()
-
-			// 	content, err := io.ReadAll(file)
-			// 	if err != nil {
-			// 		return "", err
-			// 	}
-			// 	return string(content), nil
-			// }
-
-			// Update the panes with file information
-			fileName := getFileName(filePath)
-			fileContents, err := getFileContents(filePath)
+			fileData, err := readFile(filePath)
 			if err != nil {
-				fmt.Println("Error reading file contents:", err)
+				fmt.Println("Failed to read file, error:", err)
+				return
+			}
+			if !isPEFile(fileData) {
+				fmt.Println("File is not a PE file")
 				return
 			}
 
+			// Update the panes with file information
+			sections, _ := getSections(fileData)
+			dosHeader, _ := getDosHeader(fileData)
+
 			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
-			leftPane.SetText(fileName)      // Set file name in left pane
-			rightPane.SetText(fileContents) // Set file content in right pane
-		}),
-		fyne.NewMenuItem("Save", func() {
-			// Action for Save
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Exit", func() {
-			myApp.Quit()
+			leftPane.SetText(sections)   // Set file name in left pane
+			rightPane.SetText(dosHeader) // Set file content in right pane
 		}),
 	)
 
@@ -86,10 +56,11 @@ func main() {
 
 	// Create a horizontal split
 	split := container.NewHSplit(leftPane, rightPane)
-	split.SetOffset(0.5) // Set the split ratio (0.5 means equal halves)
+	split.SetOffset(0.25) // Set the split ratio (0.5 means equal halves)
+	fixedSplit := container.NewStack(split)
 
 	// Set the content with a vertical layout
-	content := container.NewBorder(nil, nil, nil, nil, split)
+	content := container.NewBorder(nil, nil, nil, nil, fixedSplit)
 
 	// Set the menu and content in the window
 	myWindow.SetMainMenu(mainMenu)

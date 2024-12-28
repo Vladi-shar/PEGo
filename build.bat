@@ -1,2 +1,4 @@
-# Windows build (assumes you're running this in a compatible shell, like Git Bash)
-go build -ldflags="-H=windowsgui -s -w" -o bin\PEGo.exe .
+@REM this command builds without console window
+@REM go build -ldflags="-H=windowsgui -s -w" -o bin\PEGo.exe .
+go build -ldflags="-s -w" -o bin\PEGo.exe .\src
+

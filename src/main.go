@@ -1,16 +1,31 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 
 	"debug/pe"
+	"image/png"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sqweek/dialog"
+
+	_ "embed"
 )
+
+//go:embed winres\\logosmall.png
+var iconBytes []byte
+
+func loadIcon() fyne.Resource {
+	_, err := png.Decode(bytes.NewReader(iconBytes))
+	if err != nil {
+		panic("Failed to load embedded icon: " + err.Error())
+	}
+	return fyne.NewStaticResource("logosmall.png", iconBytes)
+}
 
 func getSections(peFile *pe.File) (string, error) {
 
@@ -18,9 +33,13 @@ func getSections(peFile *pe.File) (string, error) {
 }
 
 func main() {
+
 	// Create the application
 	myApp := app.New()
-	myWindow := myApp.NewWindow("Fyne UI Example")
+	myWindow := myApp.NewWindow("PEGo")
+
+	icon := loadIcon()
+	myWindow.SetIcon(icon)
 
 	// Create two panes
 	leftPane := container.NewStack()

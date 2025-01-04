@@ -112,8 +112,18 @@ func InitPaneView(window fyne.Window) {
 			}
 			defer file.Close()
 
+			dos, err := parseDOSHeader(filePath)
+			if err != nil {
+				errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
+				displayErrorOnRightPane(ui, "Error parsing dos header")
+				fmt.Println(errorMessage)
+				return
+			}
+
+			peFull.dos = dos
+			peFull.peFile = file
+
 			// sections, _ := getSections(file)
-			dosHeader, _ := getDosHeader(file)
 
 			data = getPeTreeMap(file, filePath)
 
@@ -122,14 +132,13 @@ func InitPaneView(window fyne.Window) {
 			tree.Root = "File: " + filePath
 			tree.Refresh()
 			tree.OpenAllBranches()
-			ui.rightPane.SetText(dosHeader) // Set file content in right pane
 		}),
 	)
 
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if uid == "Dos Header" {
 			// Call the function to display DOS header details
-			displayDosHeaderDetails(ui, filePath)
+			displayDosHeaderDetails(ui, peFull.dos)
 		} else {
 			ui.rightPane.SetText(uid) // Fallback: display the node's name
 		}

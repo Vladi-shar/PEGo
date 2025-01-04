@@ -43,7 +43,7 @@ func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 	fmt.Println("Data Directories:")
 	for i, dir := range optHeader.DataDirectory {
 		if i < len(directoryNames) {
-			fmt.Printf("Directory [%d] %s: VirtualAddress=0x%x, Size=%d\n", i, directoryNames[i], dir.VirtualAddress, dir.Size)
+			fmt.Printf("Directory [%d] %s: VirtualAddress=0x%x, Size=%x\n", i, directoryNames[i], dir.VirtualAddress, dir.Size)
 
 			if dir.VirtualAddress != 0 && dir.Size != 0 {
 				// data[directoryNames[i]] = []string{}

@@ -90,11 +90,12 @@ func InitPaneView(window fyne.Window) {
 	)
 
 	ui.leftPane.Add(tree)
-
+	var filePath string
 	// Create the File menu
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("Open", func() {
-			filePath, err := dialog.File().Title("Select a File").Load()
+			var err error
+			filePath, err = dialog.File().Title("Select a File").Load()
 			if err != nil {
 				if err.Error() != "cancelled" { // Ignore "cancelled" error
 					fmt.Println("Error opening file:", err)
@@ -114,7 +115,6 @@ func InitPaneView(window fyne.Window) {
 			// sections, _ := getSections(file)
 			dosHeader, _ := getDosHeader(file)
 
-
 			data = getPeTreeMap(file, filePath)
 
 			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
@@ -126,6 +126,14 @@ func InitPaneView(window fyne.Window) {
 		}),
 	)
 
+	tree.OnSelected = func(uid widget.TreeNodeID) {
+		if uid == "Dos Header" {
+			// Call the function to display DOS header details
+			displayDosHeaderDetails(ui, filePath)
+		} else {
+			ui.rightPane.SetText(uid) // Fallback: display the node's name
+		}
+	}
 	// Create the main menu
 	mainMenu := fyne.NewMainMenu(fileMenu)
 

@@ -114,17 +114,12 @@ func InitPaneView(window fyne.Window) {
 			// sections, _ := getSections(file)
 			dosHeader, _ := getDosHeader(file)
 
-			// Define the data for the tree
-			// Simulate parsing the file and updating the data map
-			// Replace this hardcoded data with your logic for populating data
-			data[""] = []string{"File: " + filePath}
-			data["File: "+filePath] = []string{"Dos Header", "Nt Headers", "Section Headers"}
-			data["Nt Headers"] = []string{"File Header", "Optional Header"}
-			data["Optional Header"] = []string{"Data Directories [x]"}
-			data["Section Headers"] = []string{"Export Directory", "Import Directory", "Debug Directory"}
+
+			data = getPeTreeMap(file, filePath)
 
 			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
 			// leftPane.SetText(sections)   // Set file name in left pane
+			tree.Root = "File: " + filePath
 			tree.Refresh()
 			tree.OpenAllBranches()
 			ui.rightPane.SetText(dosHeader) // Set file content in right pane

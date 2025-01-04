@@ -23,3 +23,6 @@ go.work.sum
 
 #syso
 *.syso
+
+#vscode
+.vscode

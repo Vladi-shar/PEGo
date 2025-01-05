@@ -5,7 +5,7 @@ import (
 	"debug/pe"
 	"fmt"
 	"image/png"
-
+	"os"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -103,8 +103,14 @@ func InitPaneView(window fyne.Window) {
 				return
 			}
 
-			file, err := pe.Open(filePath)
+			file, err := os.Open(filePath)
 			if err != nil {
+				errorMessage := fmt.Sprintf("Error opening file: %v", err)
+				fmt.Println(errorMessage)
+			}
+			peFile, err := pe.NewFile(file)
+			if err != nil {
+				file.Close()
 				errorMessage := fmt.Sprintf("Error opening file: %v", err)
 				displayErrorOnRightPane(ui, "Unsupported file format")
 				fmt.Println(errorMessage)
@@ -112,7 +118,7 @@ func InitPaneView(window fyne.Window) {
 			}
 			defer file.Close()
 
-			dos, err := parseDOSHeader(filePath)
+			dos, err := parseDOSHeader(file)
 			if err != nil {
 				errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
 				displayErrorOnRightPane(ui, "Error parsing dos header")
@@ -121,11 +127,11 @@ func InitPaneView(window fyne.Window) {
 			}
 
 			peFull.dos = dos
-			peFull.peFile = file
+			peFull.peFile = peFile
 
 			// sections, _ := getSections(file)
 
-			data = getPeTreeMap(file, filePath)
+			data = getPeTreeMap(peFile, filePath)
 
 			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
 			// leftPane.SetText(sections)   // Set file name in left pane

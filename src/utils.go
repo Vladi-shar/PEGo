@@ -37,16 +37,11 @@ type PE_FULL struct {
 
 var peFull PE_FULL
 
-func parseDOSHeader(filePath string) (*DOSHeader, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
-	}
-	defer file.Close()
+func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 
 	// The DOS Header is at the beginning of the file
 	header := DOSHeader{}
-	err = binary.Read(file, binary.LittleEndian, &header)
+	err := binary.Read(file, binary.LittleEndian, &header)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read DOS header: %v", err)
 	}

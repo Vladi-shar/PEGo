@@ -5,6 +5,31 @@ import (
 	"fmt"
 )
 
+func getDataDirectories(h any) ([]pe.DataDirectory, error) {
+	switch header := h.(type) {
+	case *pe.OptionalHeader64:
+		return header.DataDirectory[:], nil
+	case *pe.OptionalHeader32:
+		return header.DataDirectory[:], nil
+	default:
+		return nil, fmt.Errorf("unknown header type")
+	}
+}
+
+func getOptionalHeader(peFile *pe.File) (any, error) {
+	switch peFile.FileHeader.Machine {
+	case pe.IMAGE_FILE_MACHINE_AMD64:
+		// 64-bit binary
+		return peFile.OptionalHeader.(*pe.OptionalHeader64), nil
+	case pe.IMAGE_FILE_MACHINE_I386:
+		// 32-bit binary
+		return peFile.OptionalHeader.(*pe.OptionalHeader32), nil
+	default:
+		// Unsupported or unknown architecture
+		return nil, fmt.Errorf("unsupported Machine type: 0x%x", peFile.FileHeader.Machine)
+	}
+}
+
 func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 	data := map[string][]string{}
 	root := "File: " + filePath
@@ -15,9 +40,9 @@ func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 	data["Optional Header"] = []string{"Data Directories"}
 
 	// Access the Optional Header
-	optHeader, ok := peFile.OptionalHeader.(*pe.OptionalHeader64) // Use OptionalHeader64 for 64-bit PE files
-	if !ok {
-		fmt.Println("Failed to cast optional header")
+	optHeader, err := getOptionalHeader(peFile)
+	if err != nil {
+		fmt.Println(err)
 		return map[string][]string{}
 	}
 
@@ -41,7 +66,13 @@ func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 
 	// Loop through the Data Directories
 	fmt.Println("Data Directories:")
-	for i, dir := range optHeader.DataDirectory {
+	dataDirs, err := getDataDirectories(optHeader)
+	if err != nil {
+		fmt.Println(err)
+		return map[string][]string{}
+	}
+
+	for i, dir := range dataDirs {
 		if i < len(directoryNames) {
 			fmt.Printf("Directory [%d] %s: VirtualAddress=0x%x, Size=%x\n", i, directoryNames[i], dir.VirtualAddress, dir.Size)
 

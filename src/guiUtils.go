@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"reflect"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/sqweek/dialog"
 
 	_ "embed"
 )
@@ -21,13 +22,13 @@ var MyApp fyne.App
 
 type MyAppUI struct {
 	leftPane  *fyne.Container
-	rightPane *widget.Label
+	rightPane *fyne.Container
 }
 
 func initUIElements() *MyAppUI {
 	return &MyAppUI{
 		leftPane:  container.NewStack(),
-		rightPane: widget.NewLabel("Right Pane Content"),
+		rightPane: container.NewStack(),
 	}
 }
 
@@ -60,7 +61,8 @@ func displayPopup(heading string, msg string) {
 }
 
 func displayErrorOnRightPane(ui *MyAppUI, msg string) {
-	ui.rightPane.SetText(msg)
+	ui.rightPane.RemoveAll()
+	ui.rightPane.Add(widget.NewLabel(msg))
 }
 
 func InitPaneView(window fyne.Window) {
@@ -90,67 +92,70 @@ func InitPaneView(window fyne.Window) {
 	)
 
 	ui.leftPane.Add(tree)
-	var filePath string
+	var filePath = "C:\\Program Files\\Android\\Android Studio\\bin\\breakgen64.dll"
 	// Create the File menu
-	fileMenu := fyne.NewMenu("File",
-		fyne.NewMenuItem("Open", func() {
-			var err error
-			filePath, err = dialog.File().Title("Select a File").Load()
-			if err != nil {
-				if err.Error() != "cancelled" { // Ignore "cancelled" error
-					fmt.Println("Error opening file:", err)
-				}
-				return
-			}
 
-			file, err := os.Open(filePath)
-			if err != nil {
-				errorMessage := fmt.Sprintf("Error opening file: %v", err)
-				fmt.Println(errorMessage)
-			}
-			peFile, err := pe.NewFile(file)
-			if err != nil {
-				file.Close()
-				errorMessage := fmt.Sprintf("Error opening file: %v", err)
-				displayErrorOnRightPane(ui, "Unsupported file format")
-				fmt.Println(errorMessage)
-				return
-			}
-			defer file.Close()
+	// fileMenu := fyne.NewMenu("File",
+	// 	fyne.NewMenuItem("Open", func() {
+	//var err error
+	// filePath, err = dialog.File().Title("Select a File").Load()
+	// if err != nil {
+	// 	if err.Error() != "cancelled" { // Ignore "cancelled" error
+	// 		fmt.Println("Error opening file:", err)
+	// 	}
+	// 	return
+	// }
 
-			dos, err := parseDOSHeader(file)
-			if err != nil {
-				errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
-				displayErrorOnRightPane(ui, "Error parsing dos header")
-				fmt.Println(errorMessage)
-				return
-			}
+	file, err := os.Open(filePath)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Error opening file: %v", err)
+		fmt.Println(errorMessage)
+	}
+	peFile, err := pe.NewFile(file)
+	if err != nil {
+		file.Close()
+		errorMessage := fmt.Sprintf("Error opening file: %v", err)
+		displayErrorOnRightPane(ui, "Unsupported file format")
+		fmt.Println(errorMessage)
+		return
+	}
+	defer file.Close()
 
-			peFull.dos = dos
-			peFull.peFile = peFile
+	dos, err := parseDOSHeader(file)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
+		displayErrorOnRightPane(ui, "Error parsing dos header")
+		fmt.Println(errorMessage)
+		return
+	}
 
-			// sections, _ := getSections(file)
+	peFull.dos = dos
+	peFull.peFile = peFile
 
-			data = getPeTreeMap(peFile, filePath)
+	// sections, _ := getSections(file)
 
-			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
-			// leftPane.SetText(sections)   // Set file name in left pane
-			tree.Root = "File: " + filePath
-			tree.Refresh()
-			tree.OpenAllBranches()
-		}),
-	)
+	data = getPeTreeMap(peFile, filePath)
+
+	// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
+	// leftPane.SetText(sections)   // Set file name in left pane
+	tree.Root = "File: " + filePath
+	tree.Refresh()
+	tree.OpenAllBranches()
+	//}),
+	//)
 
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if uid == "Dos Header" {
 			// Call the function to display DOS header details
 			displayDosHeaderDetails(ui, peFull.dos)
 		} else {
-			ui.rightPane.SetText(uid) // Fallback: display the node's name
+			ui.rightPane.RemoveAll()
+			ui.rightPane.Add(widget.NewLabel(uid))
 		}
 	}
+
 	// Create the main menu
-	mainMenu := fyne.NewMainMenu(fileMenu)
+	//mainMenu := fyne.NewMainMenu(fileMenu)
 
 	// Create a horizontal split
 	split := container.NewHSplit(ui.leftPane, ui.rightPane)
@@ -161,10 +166,63 @@ func InitPaneView(window fyne.Window) {
 	content := container.NewBorder(nil, nil, nil, nil, fixedSplit)
 
 	// Set the menu and content in the window
-	window.SetMainMenu(mainMenu)
+	//window.SetMainMenu(mainMenu)
 	window.SetContent(content)
 
 	// Show and run the application
 	window.Resize(fyne.NewSize(800, 600))
 	window.ShowAndRun()
+}
+
+func createTableFromStruct(header any) (*widget.Table, error) {
+	// Use reflection to iterate over the struct fields
+	t := reflect.TypeOf(header)
+	v := reflect.ValueOf(header)
+
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		v = v.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected a struct or a pointer to a struct, got %s", t.Kind())
+	}
+
+	// Prepare the data slice
+	data := [][]string{{"Field", "Value", "Size"}} // Header row
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		value := v.Field(i)
+		size := field.Type.Size()
+
+		// Handle arrays separately
+		var valueStr string
+		if value.Kind() == reflect.Array {
+			for j := 0; j < value.Len(); j++ {
+				valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
+			}
+		} else {
+			valueStr = fmt.Sprintf("%#x", value.Interface())
+		}
+
+		data = append(data, []string{field.Name, valueStr, fmt.Sprintf("%d", size)})
+	}
+
+	// Create the table
+	table := widget.NewTable(
+		func() (int, int) {
+			return len(data), len(data[0]) // Number of rows and columns
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("") // Template for each cell
+		},
+		func(id widget.TableCellID, cell fyne.CanvasObject) {
+			cell.(*widget.Label).SetText(data[id.Row][id.Col]) // Populate cell content
+		},
+	)
+	table.SetRowHeight(1, 10)
+	table.SetRowHeight(3, 20)
+
+	return table, nil
 }

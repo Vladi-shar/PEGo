@@ -8,11 +8,12 @@ import (
 	"os"
 	"reflect"
 
+	_ "embed"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-
-	_ "embed"
 )
 
 //go:embed winres\\logosmall.png
@@ -174,6 +175,31 @@ func InitPaneView(window fyne.Window) {
 	window.ShowAndRun()
 }
 
+func makeRowsHeightsMap(data [][]string) map[int]float32 {
+	var rowHeights = make(map[int]float32)
+
+	textSize := theme.TextSize()
+	textStyle := fyne.TextStyle{}
+	for row, cols := range data {
+		for col := range cols {
+			text := data[row][col]
+
+			size := fyne.MeasureText(text, textSize, textStyle)
+			lines := float32(size.Width) / 200
+			if lines < 1 {
+				lines = 1
+			}
+
+			newHeight := float32(size.Height) * fyne.Max(lines, 1)
+			if currentHeight, exists := rowHeights[row]; !exists || currentHeight < newHeight {
+				rowHeights[row] = newHeight
+				fmt.Printf("updated height for row%d, old height: %f, new height: %f\n", row, currentHeight, newHeight)
+			}
+		}
+	}
+	return rowHeights
+}
+
 func createTableFromStruct(header any) (*widget.Table, error) {
 	// Use reflection to iterate over the struct fields
 	t := reflect.TypeOf(header)
@@ -189,30 +215,30 @@ func createTableFromStruct(header any) (*widget.Table, error) {
 	}
 
 	// Prepare the data slice
-	data := [][]string{{"Field", "Value", "Size"}} // Header row
+	data := [][]string{[]string{"Field", "Value", "Size"}} // Header row
+	data = append(data, []string{"zibi", "nahui", "12"})
+	data = append(data, []string{"field.Name", "valueStrbanananananananananananananananananannana", "14"})
+	data = append(data, []string{"field.sasd", "sdfds", "13"})
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		value := v.Field(i)
-		size := field.Type.Size()
+	// for i := 0; i < t.NumField(); i++ {
+	// 	field := t.Field(i)
+	// 	value := v.Field(i)
+	// 	size := field.Type.Size()
 
-		// Handle arrays separately
-		var valueStr string
-		if value.Kind() == reflect.Array {
-			for j := 0; j < value.Len(); j++ {
-				valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
-			}
-		} else {
-			valueStr = fmt.Sprintf("%#x", value.Interface())
-		}
+	// 	// Handle arrays separately
+	// 	var valueStr string
+	// 	if value.Kind() == reflect.Array {
+	// 		for j := 0; j < value.Len(); j++ {
+	// 			valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
+	// 		}
+	// 	} else {
+	// 		valueStr = fmt.Sprintf("%#x", value.Interface())
+	// 	}
 
-		data = append(data, []string{field.Name, valueStr, fmt.Sprintf("%d", size)})
-	}
+	// }
 
 	var table *widget.Table // declare a pointer to a Table
-
-	// Create the table
-	table = widget.NewTable(
+	table = widget.NewTableWithHeaders(
 		func() (int, int) {
 			return len(data), len(data[0]) // Number of rows and columns
 		},
@@ -224,20 +250,18 @@ func createTableFromStruct(header any) (*widget.Table, error) {
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			lbl := cell.(*widget.Label)
 			text := data[id.Row][id.Col]
+			fmt.Printf("text %s, %d\n", text, cell.Size().Height)
+
 			lbl.SetText(text) // Populate cell content
-
-			size := fyne.MeasureText(text, lbl.Size().Height, lbl.TextStyle)
-			lines := float32(size.Width) / 200
-			if lines < 1 {
-				lines = 1
-			}
-
-			neededHeight := float32(size.Height) * fyne.Max(lines, 1)
-			padding := float32(8)
-			table.SetRowHeight(id.Row, neededHeight+padding)
-			// table.SetRowHeight(id.Row, 10)
 		},
 	)
+	table.SetColumnWidth(0, 200) // Width for the "Field" column
+	table.SetColumnWidth(1, 200) // Width for the "Value" column
+	table.SetColumnWidth(2, 200) // Width for the "Value" column
+
+	for row, height := range makeRowsHeightsMap(data) {
+		table.SetRowHeight(row, height)
+	}
 
 	return table, nil
 }

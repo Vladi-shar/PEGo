@@ -12,8 +12,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/sqweek/dialog"
 )
 
 //go:embed winres\\logosmall.png
@@ -93,57 +93,52 @@ func InitPaneView(window fyne.Window) {
 	)
 
 	ui.leftPane.Add(tree)
-	var filePath = "C:\\Program Files\\Android\\Android Studio\\bin\\breakgen64.dll"
-	// Create the File menu
+	var filePath string
 
-	// fileMenu := fyne.NewMenu("File",
-	// 	fyne.NewMenuItem("Open", func() {
-	//var err error
-	// filePath, err = dialog.File().Title("Select a File").Load()
-	// if err != nil {
-	// 	if err.Error() != "cancelled" { // Ignore "cancelled" error
-	// 		fmt.Println("Error opening file:", err)
-	// 	}
-	// 	return
-	// }
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("Open", func() {
+			var err error
+			filePath, err = dialog.File().Title("Select a File").Load()
+			if err != nil {
+				if err.Error() != "cancelled" { // Ignore "cancelled" error
+					fmt.Println("Error opening file:", err)
+				}
+				return
+			}
 
-	file, err := os.Open(filePath)
-	if err != nil {
-		errorMessage := fmt.Sprintf("Error opening file: %v", err)
-		fmt.Println(errorMessage)
-	}
-	peFile, err := pe.NewFile(file)
-	if err != nil {
-		file.Close()
-		errorMessage := fmt.Sprintf("Error opening file: %v", err)
-		displayErrorOnRightPane(ui, "Unsupported file format")
-		fmt.Println(errorMessage)
-		return
-	}
-	defer file.Close()
+			file, err := os.Open(filePath)
+			if err != nil {
+				errorMessage := fmt.Sprintf("Error opening file: %v", err)
+				fmt.Println(errorMessage)
+			}
+			peFile, err := pe.NewFile(file)
+			if err != nil {
+				file.Close()
+				errorMessage := fmt.Sprintf("Error opening file: %v", err)
+				displayErrorOnRightPane(ui, "Unsupported file format")
+				fmt.Println(errorMessage)
+				return
+			}
+			defer file.Close()
 
-	dos, err := parseDOSHeader(file)
-	if err != nil {
-		errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
-		displayErrorOnRightPane(ui, "Error parsing dos header")
-		fmt.Println(errorMessage)
-		return
-	}
+			dos, err := parseDOSHeader(file)
+			if err != nil {
+				errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
+				displayErrorOnRightPane(ui, "Error parsing dos header")
+				fmt.Println(errorMessage)
+				return
+			}
 
-	peFull.dos = dos
-	peFull.peFile = peFile
+			peFull.dos = dos
+			peFull.peFile = peFile
 
-	// sections, _ := getSections(file)
+			data = getPeTreeMap(peFile, filePath)
 
-	data = getPeTreeMap(peFile, filePath)
-
-	// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
-	// leftPane.SetText(sections)   // Set file name in left pane
-	tree.Root = "File: " + filePath
-	tree.Refresh()
-	tree.OpenAllBranches()
-	//}),
-	//)
+			tree.Root = "File: " + filePath
+			tree.Refresh()
+			tree.OpenAllBranches()
+		}),
+	)
 
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		if uid == "Dos Header" {
@@ -156,7 +151,7 @@ func InitPaneView(window fyne.Window) {
 	}
 
 	// Create the main menu
-	//mainMenu := fyne.NewMainMenu(fileMenu)
+	mainMenu := fyne.NewMainMenu(fileMenu)
 
 	// Create a horizontal split
 	split := container.NewHSplit(ui.leftPane, ui.rightPane)
@@ -167,7 +162,7 @@ func InitPaneView(window fyne.Window) {
 	content := container.NewBorder(nil, nil, nil, nil, fixedSplit)
 
 	// Set the menu and content in the window
-	//window.SetMainMenu(mainMenu)
+	window.SetMainMenu(mainMenu)
 	window.SetContent(content)
 
 	// Show and run the application
@@ -175,27 +170,32 @@ func InitPaneView(window fyne.Window) {
 	window.ShowAndRun()
 }
 
-func makeRowsHeightsMap(data [][]string) map[int]float32 {
-	var rowHeights = make(map[int]float32)
+// measureRowsHeights measures each cell by actually wrapping the text
+// at the given column width, then returns the largest height for that row.
+func measureRowsHeights(data [][]string, colWidths []float32) map[int]float32 {
+	rowHeights := make(map[int]float32)
 
-	textSize := theme.TextSize()
-	textStyle := fyne.TextStyle{}
-	for row, cols := range data {
-		for col := range cols {
-			text := data[row][col]
+	// For each row, compute the largest required height among all columns
+	for rowIndex, cols := range data {
+		var maxHeight float32
+		for colIndex, text := range cols {
+			// Create a wrapping label
+			lbl := widget.NewLabel(text)
+			lbl.Wrapping = fyne.TextWrapWord
 
-			size := fyne.MeasureText(text, textSize, textStyle)
-			lines := float32(size.Width) / 200
-			if lines < 1 {
-				lines = 1
-			}
+			// Force the label to measure at the desired column width
+			c := container.NewWithoutLayout(lbl)
+			desiredWidth := colWidths[colIndex]
+			c.Resize(fyne.NewSize(desiredWidth, 2000)) // Large height so we can measure
+			lbl.Resize(fyne.NewSize(desiredWidth, 2000))
+			lbl.Refresh()
 
-			newHeight := float32(size.Height) * fyne.Max(lines, 1)
-			if currentHeight, exists := rowHeights[row]; !exists || currentHeight < newHeight {
-				rowHeights[row] = newHeight
-				fmt.Printf("updated height for row%d, old height: %f, new height: %f\n", row, currentHeight, newHeight)
+			sz := lbl.MinSize()
+			if sz.Height > maxHeight {
+				maxHeight = sz.Height
 			}
 		}
+		rowHeights[rowIndex] = maxHeight
 	}
 	return rowHeights
 }
@@ -215,30 +215,28 @@ func createTableFromStruct(header any) (*widget.Table, error) {
 	}
 
 	// Prepare the data slice
-	data := [][]string{[]string{"Field", "Value", "Size"}} // Header row
-	data = append(data, []string{"zibi", "nahui", "12"})
-	data = append(data, []string{"field.Name", "valueStrbanananananananananananananananananannana", "14"})
-	data = append(data, []string{"field.sasd", "sdfds", "13"})
+	data := [][]string{{"Field", "Value", "Size"}} // Header row
 
-	// for i := 0; i < t.NumField(); i++ {
-	// 	field := t.Field(i)
-	// 	value := v.Field(i)
-	// 	size := field.Type.Size()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		value := v.Field(i)
+		size := field.Type.Size()
 
-	// 	// Handle arrays separately
-	// 	var valueStr string
-	// 	if value.Kind() == reflect.Array {
-	// 		for j := 0; j < value.Len(); j++ {
-	// 			valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
-	// 		}
-	// 	} else {
-	// 		valueStr = fmt.Sprintf("%#x", value.Interface())
-	// 	}
-
-	// }
-
-	var table *widget.Table // declare a pointer to a Table
-	table = widget.NewTableWithHeaders(
+		// Handle arrays separately
+		var valueStr string
+		if value.Kind() == reflect.Array {
+			for j := 0; j < value.Len(); j++ {
+				valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
+			}
+		} else {
+			valueStr = fmt.Sprintf("%#x", value.Interface())
+		}
+		data = append(data, []string{field.Name, valueStr, fmt.Sprintf("%d", size)})
+	}
+	colWidths := []float32{100, 250, 100}
+	colHights := measureRowsHeights(data, colWidths)
+	// var table *widget.Table // declare a pointer to a Table
+	table := widget.NewTable(
 		func() (int, int) {
 			return len(data), len(data[0]) // Number of rows and columns
 		},
@@ -248,18 +246,14 @@ func createTableFromStruct(header any) (*widget.Table, error) {
 			return lbl
 		},
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			lbl := cell.(*widget.Label)
-			text := data[id.Row][id.Col]
-			fmt.Printf("text %s, %d\n", text, cell.Size().Height)
-
-			lbl.SetText(text) // Populate cell content
+			cell.(*widget.Label).SetText(data[id.Row][id.Col]) // Populate cell content
 		},
 	)
-	table.SetColumnWidth(0, 200) // Width for the "Field" column
-	table.SetColumnWidth(1, 200) // Width for the "Value" column
-	table.SetColumnWidth(2, 200) // Width for the "Value" column
 
-	for row, height := range makeRowsHeightsMap(data) {
+	for colIndex, width := range colWidths {
+		table.SetColumnWidth(colIndex, width)
+	}
+	for row, height := range colHights {
 		table.SetRowHeight(row, height)
 	}
 

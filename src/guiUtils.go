@@ -11,6 +11,7 @@ import (
 	_ "embed"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sqweek/dialog"
@@ -84,11 +85,15 @@ func InitPaneView(window fyne.Window) {
 		},
 		// Define how to create the template for branches and leaves
 		func(branch bool) fyne.CanvasObject {
-			return widget.NewLabel("") // Template node
+			txt := canvas.NewText("", nil)
+			txt.TextSize = 12
+			return txt
 		},
 		// Define how to update the template for a specific node
 		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
-			obj.(*widget.Label).SetText(uid)
+			txt := obj.(*canvas.Text)
+			txt.Text = uid
+			txt.Refresh()
 		},
 	)
 

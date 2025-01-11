@@ -209,20 +209,35 @@ func createTableFromStruct(header any) (*widget.Table, error) {
 		data = append(data, []string{field.Name, valueStr, fmt.Sprintf("%d", size)})
 	}
 
+	var table *widget.Table // declare a pointer to a Table
+
 	// Create the table
-	table := widget.NewTable(
+	table = widget.NewTable(
 		func() (int, int) {
 			return len(data), len(data[0]) // Number of rows and columns
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("") // Template for each cell
+			lbl := widget.NewLabel("") // Template for each cell
+			lbl.Wrapping = fyne.TextWrapWord
+			return lbl
 		},
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			cell.(*widget.Label).SetText(data[id.Row][id.Col]) // Populate cell content
+			lbl := cell.(*widget.Label)
+			text := data[id.Row][id.Col]
+			lbl.SetText(text) // Populate cell content
+
+			size := fyne.MeasureText(text, lbl.Size().Height, lbl.TextStyle)
+			lines := float32(size.Width) / 200
+			if lines < 1 {
+				lines = 1
+			}
+
+			neededHeight := float32(size.Height) * fyne.Max(lines, 1)
+			padding := float32(8)
+			table.SetRowHeight(id.Row, neededHeight+padding)
+			// table.SetRowHeight(id.Row, 10)
 		},
 	)
-	table.SetRowHeight(1, 10)
-	table.SetRowHeight(3, 20)
 
 	return table, nil
 }

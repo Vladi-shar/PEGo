@@ -26,7 +26,7 @@ type DOSHeader struct {
 	E_oemid    uint16     // OEM identifier (for e_oeminfo)
 	E_oeminfo  uint16     // OEM information; e_oemid specific
 	E_res2     [10]uint16 //Reserved words
-	E_ifanew   uint16     // File address of new exe header
+	E_ifanew   uint32     // File address of new exe header
 	// Additional fields are not always needed but can be added if necessary
 }
 

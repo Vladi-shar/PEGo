@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"reflect"
+
+	_ "embed"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sqweek/dialog"
-
-	_ "embed"
 )
 
 //go:embed winres\\logosmall.png
@@ -21,13 +23,13 @@ var MyApp fyne.App
 
 type MyAppUI struct {
 	leftPane  *fyne.Container
-	rightPane *widget.Label
+	rightPane *fyne.Container
 }
 
 func initUIElements() *MyAppUI {
 	return &MyAppUI{
 		leftPane:  container.NewStack(),
-		rightPane: widget.NewLabel("Right Pane Content"),
+		rightPane: container.NewStack(),
 	}
 }
 
@@ -60,7 +62,8 @@ func displayPopup(heading string, msg string) {
 }
 
 func displayErrorOnRightPane(ui *MyAppUI, msg string) {
-	ui.rightPane.SetText(msg)
+	ui.rightPane.RemoveAll()
+	ui.rightPane.Add(widget.NewLabel(msg))
 }
 
 func InitPaneView(window fyne.Window) {
@@ -91,7 +94,7 @@ func InitPaneView(window fyne.Window) {
 
 	ui.leftPane.Add(tree)
 	var filePath string
-	// Create the File menu
+
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("Open", func() {
 			var err error
@@ -129,12 +132,8 @@ func InitPaneView(window fyne.Window) {
 			peFull.dos = dos
 			peFull.peFile = peFile
 
-			// sections, _ := getSections(file)
-
 			data = getPeTreeMap(peFile, filePath)
 
-			// Update left and right panes (assuming `leftPane` and `rightPane` are defined widgets)
-			// leftPane.SetText(sections)   // Set file name in left pane
 			tree.Root = "File: " + filePath
 			tree.Refresh()
 			tree.OpenAllBranches()
@@ -146,9 +145,11 @@ func InitPaneView(window fyne.Window) {
 			// Call the function to display DOS header details
 			displayDosHeaderDetails(ui, peFull.dos)
 		} else {
-			ui.rightPane.SetText(uid) // Fallback: display the node's name
+			ui.rightPane.RemoveAll()
+			ui.rightPane.Add(widget.NewLabel(uid))
 		}
 	}
+
 	// Create the main menu
 	mainMenu := fyne.NewMainMenu(fileMenu)
 
@@ -167,4 +168,94 @@ func InitPaneView(window fyne.Window) {
 	// Show and run the application
 	window.Resize(fyne.NewSize(800, 600))
 	window.ShowAndRun()
+}
+
+// measureRowsHeights measures each cell by actually wrapping the text
+// at the given column width, then returns the largest height for that row.
+func measureRowsHeights(data [][]string, colWidths []float32) map[int]float32 {
+	rowHeights := make(map[int]float32)
+
+	// For each row, compute the largest required height among all columns
+	for rowIndex, cols := range data {
+		var maxHeight float32
+		for colIndex, text := range cols {
+			// Create a wrapping label
+			lbl := widget.NewLabel(text)
+			lbl.Wrapping = fyne.TextWrapWord
+
+			// Force the label to measure at the desired column width
+			c := container.NewWithoutLayout(lbl)
+			desiredWidth := colWidths[colIndex]
+			c.Resize(fyne.NewSize(desiredWidth, 2000)) // Large height so we can measure
+			lbl.Resize(fyne.NewSize(desiredWidth, 2000))
+			lbl.Refresh()
+
+			sz := lbl.MinSize()
+			if sz.Height > maxHeight {
+				maxHeight = sz.Height
+			}
+		}
+		rowHeights[rowIndex] = maxHeight
+	}
+	return rowHeights
+}
+
+func createTableFromStruct(header any) (*widget.Table, error) {
+	// Use reflection to iterate over the struct fields
+	t := reflect.TypeOf(header)
+	v := reflect.ValueOf(header)
+
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		v = v.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected a struct or a pointer to a struct, got %s", t.Kind())
+	}
+
+	// Prepare the data slice
+	data := [][]string{{"Field", "Value", "Size"}} // Header row
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		value := v.Field(i)
+		size := field.Type.Size()
+
+		// Handle arrays separately
+		var valueStr string
+		if value.Kind() == reflect.Array {
+			for j := 0; j < value.Len(); j++ {
+				valueStr += fmt.Sprintf("%#x ", value.Index(j).Interface())
+			}
+		} else {
+			valueStr = fmt.Sprintf("%#x", value.Interface())
+		}
+		data = append(data, []string{field.Name, valueStr, fmt.Sprintf("%d", size)})
+	}
+	colWidths := []float32{100, 250, 100}
+	colHights := measureRowsHeights(data, colWidths)
+	// var table *widget.Table // declare a pointer to a Table
+	table := widget.NewTable(
+		func() (int, int) {
+			return len(data), len(data[0]) // Number of rows and columns
+		},
+		func() fyne.CanvasObject {
+			lbl := widget.NewLabel("") // Template for each cell
+			lbl.Wrapping = fyne.TextWrapWord
+			return lbl
+		},
+		func(id widget.TableCellID, cell fyne.CanvasObject) {
+			cell.(*widget.Label).SetText(data[id.Row][id.Col]) // Populate cell content
+		},
+	)
+
+	for colIndex, width := range colWidths {
+		table.SetColumnWidth(colIndex, width)
+	}
+	for row, height := range colHights {
+		table.SetRowHeight(row, height)
+	}
+
+	return table, nil
 }

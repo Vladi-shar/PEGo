@@ -30,12 +30,17 @@ type DOSHeader struct {
 	// Additional fields are not always needed but can be added if necessary
 }
 
+type NtHeaders struct {
+	Signature uint32
+}
+
 type PE_FULL struct {
 	dos    *DOSHeader // dos header
+	nt     *NtHeaders // nt headers
 	peFile *pe.File   // rest of the pe fields
 }
 
-var peFull PE_FULL
+type dummy struct{}
 
 func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 
@@ -52,4 +57,26 @@ func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 	}
 
 	return &header, nil
+}
+
+func parseNtHeaders(file *os.File, dos *DOSHeader) (*NtHeaders, error) {
+	// Seek to the offset stored in the DOS Header
+	_, err := file.Seek(int64(dos.E_ifanew), 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek to NT Headers: %v", err)
+	}
+
+	// The NT Headers are a signature followed by the rest of the headers
+	headers := NtHeaders{}
+	err = binary.Read(file, binary.LittleEndian, &headers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read NT Headers: %v", err)
+	}
+
+	// Verify the signature
+	if headers.Signature != 0x00004550 { // "PE\0\0"
+		return nil, fmt.Errorf("invalid NT Headers signature: %#x", headers.Signature)
+	}
+
+	return &headers, nil
 }

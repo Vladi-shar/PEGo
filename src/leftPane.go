@@ -46,24 +46,6 @@ func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 		return map[string][]string{}
 	}
 
-	directoryNames := []string{
-		"Export Directory",
-		"Import Directory",
-		"Resource Directory",
-		"Exception Directory",
-		"Security Directory",
-		"Base Relocation Table",
-		"Debug Directory",
-		"Architecture Specific Data",
-		"RVA of GlobalPtr",
-		"TLS Directory",
-		"Load Configuration Directory",
-		"Bound Import Directory",
-		"Import Address Table",
-		"Delay Load Import Descriptors",
-		".NET Header",
-	}
-
 	// Loop through the Data Directories
 	fmt.Println("Data Directories:")
 	dataDirs, err := getDataDirectories(optHeader)

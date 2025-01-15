@@ -25,7 +25,7 @@ type DOSHeader struct {
 	E_res      [4]uint16  // Reserved words
 	E_oemid    uint16     // OEM identifier (for e_oeminfo)
 	E_oeminfo  uint16     // OEM information; e_oemid specific
-	E_res2     [10]uint16 //Reserved words
+	E_res2     [10]uint16 // Reserved words
 	E_ifanew   uint32     // File address of new exe header
 	// Additional fields are not always needed but can be added if necessary
 }
@@ -34,13 +34,38 @@ type NtHeaders struct {
 	Signature uint32
 }
 
-type PE_FULL struct {
+type PeFull struct {
 	dos    *DOSHeader // dos header
 	nt     *NtHeaders // nt headers
 	peFile *pe.File   // rest of the pe fields
 }
 
-type dummy struct{}
+var directoryNames = []string{
+	"Export Table",
+	"Import Table",
+	"Resource Table",
+	"Exception Table",
+	"Certificate Table",
+	"Base Relocation Table",
+	"Debug",
+	"Architecture",
+	"Global Ptr",
+	"TLS Table",
+	"Load Config Table",
+	"Bound Import",
+	"IAT",
+	"Delay Import Descriptor",
+	"CLR Runtime Header",
+	"Reserved",
+}
+
+func NewPeFull(_dos *DOSHeader, _nt *NtHeaders, _peFile *pe.File) *PeFull {
+	return &PeFull{
+		dos:    _dos,
+		nt:     _nt,
+		peFile: _peFile,
+	}
+}
 
 func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 

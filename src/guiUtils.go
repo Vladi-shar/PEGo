@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"debug/pe"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"image/png"
 	"os"
 	"reflect"
-	"unsafe"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sqweek/dialog"
 )
@@ -101,7 +100,7 @@ func InitPaneView(window fyne.Window) {
 	ui.leftPane.Add(tree)
 	var filePath string
 
-	var peFull PE_FULL
+	var peFull *PeFull
 
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("Open", func() {
@@ -145,10 +144,7 @@ func InitPaneView(window fyne.Window) {
 				return
 			}
 
-			peFull.dos = dos
-			peFull.nt = nt
-			peFull.peFile = peFile
-
+			peFull = NewPeFull(dos, nt, peFile)
 			data = getPeTreeMap(peFile, filePath)
 
 			tree.Root = "File: " + filePath
@@ -165,18 +161,30 @@ func InitPaneView(window fyne.Window) {
 		case "Nt Headers":
 			displayNtHeadersDetails(ui, peFull.nt, uintptr(peFull.dos.E_ifanew))
 		case "File Header":
-			fmt.Printf("sizeof nt: %d\n", unsafe.Sizeof(peFull.nt))
-			fmt.Printf("sizeof nt.signature: %d\n", unsafe.Sizeof(peFull.nt.Signature))
-			dummy := dummy{}
-			fmt.Printf("sizeof dummy: %d\n", unsafe.Sizeof(dummy))
-			displayFileHeaderDetails(ui, &peFull.peFile.FileHeader, uintptr(peFull.dos.E_ifanew)+unsafe.Sizeof(peFull.nt))
+			// fmt.Printf("sizeof nt: %d\n", unsafe.Sizeof(peFull.nt))
+			// fmt.Printf("sizeof nt.signature: %d\n", unsafe.Sizeof(peFull.nt.Signature))
+			displayFileHeaderDetails(ui, &peFull.peFile.FileHeader, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt)))
 		case "Optional Header":
 			optHeader, err := getOptionalHeader(peFull.peFile)
 			if err != nil {
 				displayErrorOnRightPane(ui, err.Error())
 				return
 			}
-			displayOptionalHeaderDetails(ui, optHeader, uintptr(peFull.dos.E_ifanew)+unsafe.Sizeof(peFull.nt)+unsafe.Sizeof(peFull.peFile.FileHeader))
+			displayOptionalHeaderDetails(ui, optHeader, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt))+uintptr(binary.Size(peFull.peFile.FileHeader)))
+		case "Data Directories":
+			optHeader, err := getOptionalHeader(peFull.peFile)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+			dataDirs, err := getDataDirectories(optHeader)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+
+			displayDataDirectoryDetails(ui, dataDirs, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt))+uintptr(binary.Size(peFull.peFile.FileHeader))+uintptr(binary.Size(peFull.peFile.OptionalHeader))-uintptr(binary.Size(dataDirs)))
+
 		default:
 			ui.rightPane.RemoveAll()
 			ui.rightPane.Add(widget.NewLabel(uid))
@@ -203,16 +211,6 @@ func InitPaneView(window fyne.Window) {
 	// Show and run the application
 	window.Resize(fyne.NewSize(800, 600))
 	window.ShowAndRun()
-}
-
-func getLongestString(strings []string) string {
-	var longest string
-	for _, str := range strings {
-		if len(str) > len(longest) {
-			longest = str
-		}
-	}
-	return longest
 }
 
 func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
@@ -263,32 +261,10 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 		}
 	}
 
-	fmt.Println("Longest field name:", longestFieldName)
-	// Now we have 4 columns, so adjust widths accordingly
-
-	// get the current text size
-	textSize := theme.TextSize()
-	fmt.Println("Text size:", textSize)
-
 	colWidths := []float32{65, float32(longestFieldName) * 10, 150, 100}
 
 	// Measure row heights (assuming measureRowsHeights supports 4 columns)
 	colHeights := measureRowsHeights(data, colWidths)
-
-	// // Create the table
-	// table := widget.NewTable(
-	// 	func() (int, int) {
-	// 		return len(data), len(data[0]) // Number of rows/columns
-	// 	},
-	// 	func() fyne.CanvasObject {
-	// 		lbl := widget.NewLabel("") // Template for each cell
-	// 		lbl.Wrapping = fyne.TextWrapWord
-	// 		return lbl
-	// 	},
-	// 	func(id widget.TableCellID, cell fyne.CanvasObject) {
-	// 		cell.(*widget.Label).SetText(data[id.Row][id.Col])
-	// 	},
-	// )
 
 	st := newSortableTable(data, colWidths)
 

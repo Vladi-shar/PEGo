@@ -165,6 +165,16 @@ func (st *sortableTable) updateRowHeights() {
 	}
 }
 
+func (st *sortableTable) removeRow(row int) {
+	if row < 0 || row >= len(st.data) {
+		// Index out of bounds, return unchanged
+		return
+	}
+
+	st.data = append(st.data[:row], st.data[row+1:]...)
+	st.updateRowHeights()
+}
+
 // newHeaderLabel wraps a standard label in a Tappable so we can detect clicks on it.
 func newHeaderLabel(l *widget.Label, tapped func()) fyne.CanvasObject {
 	btn := &headerLabel{

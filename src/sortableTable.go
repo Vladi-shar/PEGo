@@ -12,23 +12,35 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// columnType is an enum for the type of data in a column.
+type ColumnType int
+
+const (
+	hexCol ColumnType = iota
+	decCol
+	strCol
+	unsortableCol
+)
+
 // sortableTable wraps a widget.Table plus the underlying data slice.
 // It handles sorting when the user clicks a column header.
 type sortableTable struct {
 	table     *widget.Table
 	data      [][]string
 	colWidths []float32
+	colTypes  []ColumnType
 
 	// Track the current sort direction per column (true=asc, false=desc)
 	sortAsc map[int]bool
 }
 
 // newSortableTable creates a new sortableTable around an existing data set.
-func newSortableTable(data [][]string, colWidths []float32) *sortableTable {
+func newSortableTable(data [][]string, colWidths []float32, colTypes []ColumnType) *sortableTable {
 	st := &sortableTable{
 		data:      data,
 		colWidths: colWidths,
 		sortAsc:   make(map[int]bool),
+		colTypes:  colTypes,
 	}
 
 	tbl := widget.NewTable(
@@ -39,6 +51,7 @@ func newSortableTable(data [][]string, colWidths []float32) *sortableTable {
 		// Create: return a container with a background rect + label (default)
 		func() fyne.CanvasObject {
 			rect := canvas.NewRectangle(theme.Color(theme.ColorNameBackground))
+
 			lbl := widget.NewLabel("")
 			lbl.Wrapping = fyne.TextWrapWord
 			return container.NewStack(rect, lbl)
@@ -80,10 +93,6 @@ func newSortableTable(data [][]string, colWidths []float32) *sortableTable {
 // sortByColumn sorts st.data (excluding row 0, which is the header) by the given col index.
 func (st *sortableTable) sortByColumn(col int) {
 	// If this column is "unsortable", just return (do nothing)
-	if col == 2 {
-		// Or you could do a no-op but still toggle ascending, etc.
-		return
-	}
 
 	// Toggle the sort direction for this column
 	st.sortAsc[col] = !st.sortAsc[col]
@@ -94,28 +103,23 @@ func (st *sortableTable) sortByColumn(col int) {
 		leftStr := st.data[1+i][col]
 		rightStr := st.data[1+j][col]
 
-		switch col {
-		case 0:
-			// Column 0 = "Index" in hex format like "0x10"
-			leftVal := parseHex(leftStr) // e.g. "0x10" -> int64(16)
+		switch st.colTypes[col] {
+		case hexCol:
+			leftVal := parseHex(leftStr)
 			rightVal := parseHex(rightStr)
 			if ascending {
 				return leftVal < rightVal
 			}
 			return leftVal > rightVal
 
-		case 1:
-			// Column 1 = "Field" (string)
+		case strCol:
 			if ascending {
 				return leftStr < rightStr
 			}
 			return leftStr > rightStr
 
-		// case 2 is unsortable, so we never get here because we returned above
-
-		case 3:
-			// Column 3 = "Size" in decimal like "16"
-			leftVal := parseDec(leftStr) // e.g. "16" -> int64(16)
+		case decCol:
+			leftVal := parseDec(leftStr)
 			rightVal := parseDec(rightStr)
 			if ascending {
 				return leftVal < rightVal

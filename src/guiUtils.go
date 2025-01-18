@@ -185,6 +185,8 @@ func InitPaneView(window fyne.Window) {
 
 			displayDataDirectoryDetails(ui, dataDirs, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt))+uintptr(binary.Size(peFull.peFile.FileHeader))+uintptr(binary.Size(peFull.peFile.OptionalHeader))-uintptr(binary.Size(dataDirs)))
 
+		case "Section Headers":
+			displaySectionHeadersDetails(ui, peFull.peFile.Sections, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt))+uintptr(binary.Size(peFull.peFile.FileHeader))+uintptr(binary.Size(peFull.peFile.OptionalHeader)))
 		default:
 			ui.rightPane.RemoveAll()
 			ui.rightPane.Add(widget.NewLabel(uid))
@@ -262,11 +264,73 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 	}
 
 	colWidths := []float32{65, float32(longestFieldName) * 10, 150, 100}
+	colTypes := []ColumnType{hexCol, strCol, unsortableCol, decCol}
+	return createNewSortableTable(colWidths, data, colTypes)
+}
+
+func createTableForDataDirectories(dataDirs []pe.DataDirectory, offset uintptr) (*sortableTable, error) {
+	data := [][]string{
+		{"Offset", "Directory", "RVA", "Size"},
+	}
+
+	var longestFieldName = 0
+
+	for i, dir := range dataDirs {
+		if i < len(directoryNames) {
+			data = append(data, []string{fmt.Sprintf("0x%X", offset),
+				directoryNames[i],
+				fmt.Sprintf("0x%X", dir.VirtualAddress),
+				fmt.Sprintf("%d", dir.Size)})
+
+			if len(directoryNames[i]) > longestFieldName {
+				longestFieldName = len(directoryNames[i])
+			}
+		}
+		offset += 4
+	}
+
+	colWidths := []float32{65, float32(longestFieldName) * 10, 150, 100}
+	colTypes := []ColumnType{hexCol, strCol, hexCol, decCol}
+	return createNewSortableTable(colWidths, data, colTypes)
+}
+
+func createTableForSectionHeaders(sections []*pe.Section, offset uintptr) (*sortableTable, error) {
+
+	data := [][]string{
+		{"Offset", "Name", "Virtual Size", "Virtual Address",
+			"Raw Size", "Raw data *", "Relocations *", "Relocations #",
+			"Line Numbers *", "Line Numbers #", "Characteristics"},
+	}
+
+	for _, section := range sections {
+		header := section.SectionHeader
+		data = append(data, []string{
+			fmt.Sprintf("0x%X", offset),
+			header.Name,
+			fmt.Sprintf("0x%X", header.VirtualSize),
+			fmt.Sprintf("0x%X", header.VirtualAddress),
+			fmt.Sprintf("%d", header.Size),
+			fmt.Sprintf("0x%X", header.Offset),
+			fmt.Sprintf("0x%X", header.PointerToRelocations),
+			fmt.Sprintf("%d", header.NumberOfRelocations),
+			fmt.Sprintf("0x%X", header.PointerToLineNumbers),
+			fmt.Sprintf("%d", header.NumberOfLineNumbers),
+			fmt.Sprintf("0x%X", header.Characteristics)})
+		offset += 0x28
+	}
+
+	colWidths := []float32{65, 80, 100, 110, 100, 100, 100, 100, 120, 120, 110}
+	colTypes := []ColumnType{hexCol, strCol, hexCol, hexCol, decCol, hexCol, hexCol, decCol,
+		hexCol, decCol, hexCol}
+	return createNewSortableTable(colWidths, data, colTypes)
+}
+
+func createNewSortableTable(colWidths []float32, data [][]string, colTypes []ColumnType) (*sortableTable, error) {
 
 	// Measure row heights (assuming measureRowsHeights supports 4 columns)
 	colHeights := measureRowsHeights(data, colWidths)
 
-	st := newSortableTable(data, colWidths)
+	st := newSortableTable(data, colWidths, colTypes)
 
 	// Apply column widths
 	for colIndex, width := range colWidths {
@@ -276,6 +340,5 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 	for row, height := range colHeights {
 		st.table.SetRowHeight(row, height)
 	}
-
 	return st, nil
 }

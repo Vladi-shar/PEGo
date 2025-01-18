@@ -20,6 +20,9 @@ import (
 //go:embed winres\\logosmall.png
 var iconBytes []byte
 
+//go:embed winres\\bg.png
+var bgImage []byte
+
 var MyApp fyne.App
 
 type MyAppUI struct {
@@ -40,6 +43,17 @@ func loadIcon() fyne.Resource {
 		panic("Failed to load embedded icon: " + err.Error())
 	}
 	return fyne.NewStaticResource("logosmall.png", iconBytes)
+}
+
+func loadBackgroundImage() *canvas.Image {
+	_, err := png.Decode(bytes.NewReader(bgImage))
+	if err != nil {
+		panic("Failed to load embedded icon: " + err.Error())
+	}
+	bgImage := canvas.NewImageFromResource(fyne.NewStaticResource("bg.png", bgImage))
+	bgImage.FillMode = canvas.ImageFillOriginal
+	bgImage.Translucency = 0.97
+	return bgImage
 }
 
 func displayPopup(heading string, msg string) {
@@ -201,14 +215,10 @@ func InitPaneView(window fyne.Window) {
 	// Create a horizontal split
 	split := container.NewHSplit(ui.leftPane, ui.rightPane)
 	split.SetOffset(0.3) // Set the split ratio (0.5 means equal halves)
-	fixedSplit := container.NewStack(split)
-
-	// Set the content with a vertical layout
-	content := container.NewBorder(nil, nil, nil, nil, fixedSplit)
 
 	// Set the menu and content in the window
 	window.SetMainMenu(mainMenu)
-	window.SetContent(content)
+	window.SetContent(container.NewStack(loadBackgroundImage(), split))
 
 	// Show and run the application
 	window.Resize(fyne.NewSize(800, 600))

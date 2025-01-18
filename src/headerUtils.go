@@ -25,17 +25,47 @@ type DOSHeader struct {
 	E_res      [4]uint16  // Reserved words
 	E_oemid    uint16     // OEM identifier (for e_oeminfo)
 	E_oeminfo  uint16     // OEM information; e_oemid specific
-	E_res2     [10]uint16 //Reserved words
+	E_res2     [10]uint16 // Reserved words
 	E_ifanew   uint32     // File address of new exe header
 	// Additional fields are not always needed but can be added if necessary
 }
 
-type PE_FULL struct {
+type NtHeaders struct {
+	Signature uint32
+}
+
+type PeFull struct {
 	dos    *DOSHeader // dos header
+	nt     *NtHeaders // nt headers
 	peFile *pe.File   // rest of the pe fields
 }
 
-var peFull PE_FULL
+var directoryNames = []string{
+	"Export Table",
+	"Import Table",
+	"Resource Table",
+	"Exception Table",
+	"Certificate Table",
+	"Base Relocation Table",
+	"Debug",
+	"Architecture",
+	"Global Ptr",
+	"TLS Table",
+	"Load Config Table",
+	"Bound Import",
+	"IAT",
+	"Delay Import Descriptor",
+	"CLR Runtime Header",
+	"Reserved",
+}
+
+func NewPeFull(_dos *DOSHeader, _nt *NtHeaders, _peFile *pe.File) *PeFull {
+	return &PeFull{
+		dos:    _dos,
+		nt:     _nt,
+		peFile: _peFile,
+	}
+}
 
 func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 
@@ -52,4 +82,26 @@ func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 	}
 
 	return &header, nil
+}
+
+func parseNtHeaders(file *os.File, dos *DOSHeader) (*NtHeaders, error) {
+	// Seek to the offset stored in the DOS Header
+	_, err := file.Seek(int64(dos.E_ifanew), 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek to NT Headers: %v", err)
+	}
+
+	// The NT Headers are a signature followed by the rest of the headers
+	headers := NtHeaders{}
+	err = binary.Read(file, binary.LittleEndian, &headers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read NT Headers: %v", err)
+	}
+
+	// Verify the signature
+	if headers.Signature != 0x00004550 { // "PE\0\0"
+		return nil, fmt.Errorf("invalid NT Headers signature: %#x", headers.Signature)
+	}
+
+	return &headers, nil
 }

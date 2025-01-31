@@ -408,60 +408,81 @@ func readStringFromRVA(peFile *pe.File, fileData []byte, rva uint32) (string, er
 }
 
 func createTableForExports(peFile *pe.File, fileData []byte, exportHeader IMAGE_EXPORT_DIRECTORY) (*sortableTable, error) {
-
+	// Table header
 	data := [][]string{
-		{"Offset", "Ordinal", "Function RVA", "Name RVA",
-			"Name"},
+		{"Offset", "Ordinal", "Function RVA", "Name RVA", "Name"},
 	}
 
-	functions, err := getOffsetArrayUint32(peFile, fileData, exportHeader.AddressOfFunctions, exportHeader.NumberOfFunctions)
+	// Read the function/address arrays
+	functions, err := getOffsetArrayUint32(peFile, fileData,
+		exportHeader.AddressOfFunctions,
+		exportHeader.NumberOfFunctions)
 	if err != nil {
 		return nil, err
 	}
 
-	names, err := getOffsetArrayUint32(peFile, fileData, exportHeader.AddressOfNames, exportHeader.NumberOfNames)
+	names, err := getOffsetArrayUint32(peFile, fileData,
+		exportHeader.AddressOfNames,
+		exportHeader.NumberOfNames)
 	if err != nil {
 		return nil, err
 	}
 
-	nameOrdinals, err := getOffsetArrayUint16(peFile, fileData, exportHeader.AddressOfNameOrdinals, exportHeader.NumberOfNames)
+	nameOrdinals, err := getOffsetArrayUint16(peFile, fileData,
+		exportHeader.AddressOfNameOrdinals,
+		exportHeader.NumberOfNames)
 	if err != nil {
 		return nil, err
 	}
 
+	// Convert the Functions RVA to a file offset (for display only)
 	offset, err := rvaToOffset(peFile, exportHeader.AddressOfFunctions)
 	if err != nil {
 		return nil, err
 	}
-	// fmt.Printf("exportHeader.NumberOfFunctions = %d\n", exportHeader.NumberOfFunctions)
-	// fmt.Printf("exportHeader.NumberOfNames = %d\n", exportHeader.NumberOfNames)
 
-	// add exportDir.base to everything
+	ordToNameId := make(map[uint16]uint32)
+	for i := range names {
+		ordToNameId[nameOrdinals[i]] = uint32(i)
+		fmt.Printf("ordToNameId[0x%X] = 0x%X\n", nameOrdinals[i], i)
+	}
+
 	nameIndex := 0
+	// Loop over each function “slot” (i is 0-based, ordinal – base)
+	for i := range functions {
 
-	for functionIndex := range functions {
+		// fmt.
+		// fmt.Printf("nameOrdinals[%d] = %d\n", nameIndex, nameOrdinals[nameIndex])
+		// fmt.Printf("functionIndex = %d\n", i)
+
+		realOrdinal := exportHeader.Base + uint32(i) // actual ordinal
 		name := "N/A"
 		nameRva := "N/A"
-		fmt.Printf("nameOrdinals[%d] = %d\n", nameIndex, nameOrdinals[nameIndex])
-		fmt.Printf("functionIndex = %d\n", functionIndex)
-		if nameOrdinals[nameIndex] == uint16(functionIndex) {
-			name1, err := readStringFromRVA(peFile, fileData, names[nameIndex])
-			if err == nil {
-				name = name1
-				nameRva = fmt.Sprintf("0x%X", names[nameIndex])
-			}
-		}
-		data = append(data, []string{
-			fmt.Sprintf("0x%X", offset),
-			fmt.Sprintf("0x%X", exportHeader.Base+uint32(functionIndex)),
-			fmt.Sprintf("0x%X", functions[functionIndex]),
-			nameRva,
-			name})
-		offset += 4
 
-		if nameOrdinals[nameIndex] == uint16(functionIndex) {
+		// If there are still named exports left *and* this slot matches nameOrdinals
+		if uint32(nameIndex) < exportHeader.NumberOfNames {
+			ordinal, exists := ordToNameId[uint16(nameIndex)]
+			if exists {
+				// read the ASCII name at names[nameIndex]
+				if nameStr, err := readStringFromRVA(peFile, fileData, names[ordinal]); err == nil {
+					name = nameStr
+					nameRva = fmt.Sprintf("0x%X", names[ordinal])
+				}
+			} else {
+				fmt.Printf("no ordinal at index 0x%x\n", nameIndex)
+			}
 			nameIndex++
 		}
+
+		data = append(data, []string{
+			fmt.Sprintf("0x%X", offset),       // file offset of this function entry
+			fmt.Sprintf("0x%X", realOrdinal),  // actual ordinal we display
+			fmt.Sprintf("0x%X", functions[i]), // RVA
+			nameRva,                           // name RVA if present
+			name,                              // function name if present
+		})
+
+		offset += 4 // each entry is a 4-byte RVA
 	}
 
 	colWidths := []float32{90, 65, 100, 90, 700}

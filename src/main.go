@@ -1,15 +1,8 @@
 package main
 
 import (
-	"debug/pe"
-
 	"fyne.io/fyne/v2/app"
 )
-
-func getSections(peFile *pe.File) (string, error) {
-
-	return "not implemented", nil
-}
 
 func main() {
 

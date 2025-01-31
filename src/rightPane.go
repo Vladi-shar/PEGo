@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"debug/pe"
+	"encoding/binary"
+	"fmt"
+
+	"fyne.io/fyne/v2/container"
 )
 
 func displayDosHeaderDetails(ui *MyAppUI, dosHeader *DOSHeader, offset uintptr) {
@@ -85,4 +90,45 @@ func displaySectionHeadersDetails(ui *MyAppUI, sectionHeaders []*pe.Section, off
 	// Replace rightPane with the table
 	ui.rightPane.RemoveAll()
 	ui.rightPane.Add(table.table)
+}
+
+func displayExportTableDetails(ui *MyAppUI, exportDir pe.DataDirectory, peFile *pe.File, fileData []byte) {
+
+	// exportDir.VirtualAddress
+	var exportHeader IMAGE_EXPORT_DIRECTORY
+
+	// read from osFile at ExportDir.VirtualAddress into exportHeader
+	// if _, err := osFile.Seek(int64(exportDir.VirtualAddress), io.SeekStart); err != nil {
+	// 	displayErrorOnRightPane(ui, err.Error())
+	// 	return
+	// }
+	fmt.Printf("virtual address: 0x%x\n", exportDir.VirtualAddress)
+	fmt.Printf("file size: %d\n", len(fileData))
+	exportDirRawOffset, err := rvaToOffset(peFile, exportDir.VirtualAddress)
+	if err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+
+	reader := bytes.NewReader(fileData[exportDirRawOffset:])
+	if err := binary.Read(reader, binary.LittleEndian, &exportHeader); err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+	table, err := createTableFromStruct(exportHeader, uintptr(exportDirRawOffset))
+	if err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+
+	table2, err := createTableForExports(peFile, fileData, exportHeader)
+	if err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+
+	split := container.NewVSplit(table.table, table2.table)
+
+	ui.rightPane.RemoveAll()
+	ui.rightPane.Add(split)
 }

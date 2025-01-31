@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"debug/pe"
 	"encoding/binary"
 	"fmt"
-	"os"
 )
 
 type DOSHeader struct {
@@ -35,9 +35,24 @@ type NtHeaders struct {
 }
 
 type PeFull struct {
-	dos    *DOSHeader // dos header
-	nt     *NtHeaders // nt headers
-	peFile *pe.File   // rest of the pe fields
+	dos      *DOSHeader // dos header
+	nt       *NtHeaders // nt headers
+	peFile   *pe.File   // rest of the pe fields
+	fileData []byte     // raw file
+}
+
+type IMAGE_EXPORT_DIRECTORY struct {
+	Characteristics       uint32
+	TimeDateStamp         uint32
+	MajorVersion          uint16
+	MinorVersion          uint16
+	Name                  uint32
+	Base                  uint32
+	NumberOfFunctions     uint32
+	NumberOfNames         uint32
+	AddressOfFunctions    uint32
+	AddressOfNames        uint32
+	AddressOfNameOrdinals uint32
 }
 
 var directoryNames = []string{
@@ -59,23 +74,24 @@ var directoryNames = []string{
 	"Reserved",
 }
 
-func NewPeFull(_dos *DOSHeader, _nt *NtHeaders, _peFile *pe.File) *PeFull {
+func NewPeFull(_dos *DOSHeader, _nt *NtHeaders, _peFile *pe.File, _fileData []byte) *PeFull {
 	return &PeFull{
-		dos:    _dos,
-		nt:     _nt,
-		peFile: _peFile,
+		dos:      _dos,
+		nt:       _nt,
+		peFile:   _peFile,
+		fileData: _fileData,
 	}
 }
 
-func parseDOSHeader(file *os.File) (*DOSHeader, error) {
+func parseDOSHeader(fileData []byte) (*DOSHeader, error) {
 
 	// The DOS Header is at the beginning of the file
 	header := DOSHeader{}
-	err := binary.Read(file, binary.LittleEndian, &header)
+	reader := bytes.NewReader(fileData[0:])
+	err := binary.Read(reader, binary.LittleEndian, &header)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read DOS header: %v", err)
 	}
-
 	// Verify the magic number
 	if header.E_magic != 0x5A4D { // "MZ"
 		return nil, fmt.Errorf("invalid DOS header magic number: %#x", header.E_magic)
@@ -84,16 +100,12 @@ func parseDOSHeader(file *os.File) (*DOSHeader, error) {
 	return &header, nil
 }
 
-func parseNtHeaders(file *os.File, dos *DOSHeader) (*NtHeaders, error) {
-	// Seek to the offset stored in the DOS Header
-	_, err := file.Seek(int64(dos.E_ifanew), 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to seek to NT Headers: %v", err)
-	}
+func parseNtHeaders(fileData []byte, dos *DOSHeader) (*NtHeaders, error) {
 
 	// The NT Headers are a signature followed by the rest of the headers
 	headers := NtHeaders{}
-	err = binary.Read(file, binary.LittleEndian, &headers)
+	reader := bytes.NewReader(fileData[int64(dos.E_ifanew):])
+	err := binary.Read(reader, binary.LittleEndian, &headers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read NT Headers: %v", err)
 	}
@@ -104,4 +116,21 @@ func parseNtHeaders(file *os.File, dos *DOSHeader) (*NtHeaders, error) {
 	}
 
 	return &headers, nil
+}
+
+func rvaToOffset(pe *pe.File, rva uint32) (uint32, error) {
+	for _, sh := range pe.Sections {
+		size := sh.VirtualSize
+		// Some tools pad VirtualSize to multiple of FileAlignment; make sure to handle that.
+		// But for simplicity, let's just use VirtualSize as is:
+		if rva >= sh.VirtualAddress && rva < sh.VirtualAddress+size {
+			delta := rva - sh.VirtualAddress
+			fileOffset := sh.Offset + delta
+			// if fileOffset > uint32(pe.FileSize) {
+			// 	return 0, fmt.Errorf("file offset 0x%X is out of file bounds", fileOffset)
+			// }
+			return fileOffset, nil
+		}
+	}
+	return 0, fmt.Errorf("RVA 0x%X not found in any section", rva)
 }

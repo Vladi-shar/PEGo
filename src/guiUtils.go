@@ -142,7 +142,13 @@ func InitPaneView(window fyne.Window) {
 			}
 			defer file.Close()
 
-			dos, err := parseDOSHeader(file)
+			fileData, err := os.ReadFile(filePath)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+
+			dos, err := parseDOSHeader(fileData)
 			if err != nil {
 				errorMessage := fmt.Sprintf("Error parsing dos header: %v", err)
 				displayErrorOnRightPane(ui, "Error parsing dos header")
@@ -150,7 +156,7 @@ func InitPaneView(window fyne.Window) {
 				return
 			}
 
-			nt, err := parseNtHeaders(file, dos)
+			nt, err := parseNtHeaders(fileData, dos)
 			if err != nil {
 				errorMessage := fmt.Sprintf("Error parsing nt headers: %v", err)
 				displayErrorOnRightPane(ui, "Error parsing nt headers")
@@ -158,7 +164,7 @@ func InitPaneView(window fyne.Window) {
 				return
 			}
 
-			peFull = NewPeFull(dos, nt, peFile)
+			peFull = NewPeFull(dos, nt, peFile, fileData)
 			data = getPeTreeMap(peFile, filePath)
 
 			tree.Root = "File: " + filePath
@@ -201,6 +207,19 @@ func InitPaneView(window fyne.Window) {
 
 		case "Section Headers":
 			displaySectionHeadersDetails(ui, peFull.peFile.Sections, uintptr(peFull.dos.E_ifanew)+uintptr(binary.Size(peFull.nt))+uintptr(binary.Size(peFull.peFile.FileHeader))+uintptr(binary.Size(peFull.peFile.OptionalHeader)))
+		case "Export Table":
+			optHeader, err := getOptionalHeader(peFull.peFile)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+			dataDirs, err := getDataDirectories(optHeader)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+
+			displayExportTableDetails(ui, dataDirs[0], peFull.peFile, peFull.fileData)
 		default:
 			ui.rightPane.RemoveAll()
 			ui.rightPane.Add(widget.NewLabel(uid))
@@ -273,7 +292,7 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 		}
 	}
 
-	colWidths := []float32{65, float32(longestFieldName) * 10, 150, 100}
+	colWidths := []float32{90, float32(longestFieldName) * 10, 150, 100}
 	colTypes := []ColumnType{hexCol, strCol, unsortableCol, decCol}
 	return createNewSortableTable(colWidths, data, colTypes)
 }
@@ -332,6 +351,121 @@ func createTableForSectionHeaders(sections []*pe.Section, offset uintptr) (*sort
 	colWidths := []float32{65, 80, 100, 110, 100, 100, 100, 100, 120, 120, 110}
 	colTypes := []ColumnType{hexCol, strCol, hexCol, hexCol, decCol, hexCol, hexCol, decCol,
 		hexCol, decCol, hexCol}
+	return createNewSortableTable(colWidths, data, colTypes)
+}
+
+func getOffsetArrayUint32(peFile *pe.File, fileData []byte, rva uint32, size uint32) ([]uint32, error) {
+	offset, err := rvaToOffset(peFile, rva)
+	if err != nil {
+		return nil, err
+	}
+
+	arr := make([]uint32, size)
+	addressOfFunctionsReader := bytes.NewReader(fileData[offset:])
+	if err := binary.Read(addressOfFunctionsReader, binary.LittleEndian, &arr); err != nil {
+		return nil, err
+	}
+
+	return arr, nil
+}
+
+func getOffsetArrayUint16(peFile *pe.File, fileData []byte, rva uint32, size uint32) ([]uint16, error) {
+	offset, err := rvaToOffset(peFile, rva)
+	if err != nil {
+		return nil, err
+	}
+
+	arr := make([]uint16, size)
+	addressOfFunctionsReader := bytes.NewReader(fileData[offset:])
+	if err := binary.Read(addressOfFunctionsReader, binary.LittleEndian, &arr); err != nil {
+		return nil, err
+	}
+
+	return arr, nil
+}
+
+func readStringFromRVA(peFile *pe.File, fileData []byte, rva uint32) (string, error) {
+	offset, err := rvaToOffset(peFile, rva)
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure offset is within bounds
+	if offset >= uint32(len(fileData)) {
+		return "", fmt.Errorf("offset out of bounds")
+	}
+
+	// Read until the first null terminator
+	var strBytes []byte
+	for i := offset; i < uint32(len(fileData)); i++ {
+		if fileData[i] == 0 { // Null terminator found
+			break
+		}
+		strBytes = append(strBytes, fileData[i])
+	}
+
+	return string(strBytes), nil
+}
+
+func createTableForExports(peFile *pe.File, fileData []byte, exportHeader IMAGE_EXPORT_DIRECTORY) (*sortableTable, error) {
+
+	data := [][]string{
+		{"Offset", "Ordinal", "Function RVA", "Name RVA",
+			"Name"},
+	}
+
+	functions, err := getOffsetArrayUint32(peFile, fileData, exportHeader.AddressOfFunctions, exportHeader.NumberOfFunctions)
+	if err != nil {
+		return nil, err
+	}
+
+	names, err := getOffsetArrayUint32(peFile, fileData, exportHeader.AddressOfNames, exportHeader.NumberOfNames)
+	if err != nil {
+		return nil, err
+	}
+
+	nameOrdinals, err := getOffsetArrayUint16(peFile, fileData, exportHeader.AddressOfNameOrdinals, exportHeader.NumberOfNames)
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err := rvaToOffset(peFile, exportHeader.AddressOfFunctions)
+	if err != nil {
+		return nil, err
+	}
+	// fmt.Printf("exportHeader.NumberOfFunctions = %d\n", exportHeader.NumberOfFunctions)
+	// fmt.Printf("exportHeader.NumberOfNames = %d\n", exportHeader.NumberOfNames)
+
+	// add exportDir.base to everything
+	nameIndex := 0
+
+	for functionIndex := range functions {
+		name := "N/A"
+		nameRva := "N/A"
+		fmt.Printf("nameOrdinals[%d] = %d\n", nameIndex, nameOrdinals[nameIndex])
+		fmt.Printf("functionIndex = %d\n", functionIndex)
+		if nameOrdinals[nameIndex] == uint16(functionIndex) {
+			name1, err := readStringFromRVA(peFile, fileData, names[nameIndex])
+			if err == nil {
+				name = name1
+				nameRva = fmt.Sprintf("0x%X", names[nameIndex])
+			}
+		}
+		data = append(data, []string{
+			fmt.Sprintf("0x%X", offset),
+			fmt.Sprintf("0x%X", exportHeader.Base+uint32(functionIndex)),
+			fmt.Sprintf("0x%X", functions[functionIndex]),
+			nameRva,
+			name})
+		offset += 4
+
+		if nameOrdinals[nameIndex] == uint16(functionIndex) {
+			nameIndex++
+		}
+	}
+
+	colWidths := []float32{90, 65, 100, 90, 700}
+	colTypes := []ColumnType{hexCol, hexCol, hexCol, hexCol, strCol}
 	return createNewSortableTable(colWidths, data, colTypes)
 }
 

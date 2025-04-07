@@ -115,6 +115,7 @@ func InitPaneView(window fyne.Window) {
 	var filePath string
 
 	var peFull *PeFull
+	var rootName string
 
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("Open", func() {
@@ -166,15 +167,23 @@ func InitPaneView(window fyne.Window) {
 
 			peFull = NewPeFull(dos, nt, peFile, fileData)
 			data = getPeTreeMap(peFile, filePath)
-
-			tree.Root = "File: " + filePath
+			rootName = data[""][0]
+			fmt.Printf("rootName: %s\n", rootName)
 			tree.Refresh()
 			tree.OpenAllBranches()
+			tree.Select(rootName)
 		}),
 	)
 
 	tree.OnSelected = func(uid widget.TreeNodeID) {
 		switch uid {
+		case rootName:
+			properties, err := getFileProperties(peFull, filePath)
+			if err != nil {
+				displayErrorOnRightPane(ui, err.Error())
+				return
+			}
+			displayFileProperties(ui, properties)
 		case "Dos Header":
 			// Call the function to display DOS header details
 			displayDosHeaderDetails(ui, peFull.dos, 0)
@@ -222,7 +231,7 @@ func InitPaneView(window fyne.Window) {
 			displayExportTableDetails(ui, dataDirs[0], peFull.peFile, peFull.fileData)
 		default:
 			ui.rightPane.RemoveAll()
-			ui.rightPane.Add(widget.NewLabel(uid))
+			ui.rightPane.Add(widget.NewLabel(rootName))
 
 		}
 

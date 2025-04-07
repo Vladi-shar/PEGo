@@ -1,8 +1,10 @@
 package main
 
 import (
+
 	"debug/pe"
 	"fmt"
+	"path/filepath"
 )
 
 func getDataDirectories(h any) ([]pe.DataDirectory, error) {
@@ -32,8 +34,7 @@ func getOptionalHeader(peFile *pe.File) (any, error) {
 
 func getPeTreeMap(peFile *pe.File, filePath string) map[string][]string {
 	data := map[string][]string{}
-	root := "File: " + filePath
-
+	root := "File: " + filepath.Base(filePath)
 	data[""] = []string{root}
 	data[root] = []string{"Dos Header", "Nt Headers", "Section Headers"}
 	data["Nt Headers"] = []string{"File Header", "Optional Header"}

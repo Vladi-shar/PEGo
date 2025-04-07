@@ -9,6 +9,25 @@ import (
 	"fyne.io/fyne/v2/container"
 )
 
+func displayFileProperties(ui *MyAppUI, fileProperties FileProperties) {
+	// Remove all widgets from the right pane
+	ui.rightPane.RemoveAll()
+	propertiesTable, err := createTableForProperties(fileProperties)
+	if err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+	resourcesTable, err := createTableForResources(fileProperties.FileResources)
+	if err != nil {
+		displayErrorOnRightPane(ui, err.Error())
+		return
+	}
+	ui.rightPane.RemoveAll()
+
+	split := container.NewVSplit(propertiesTable.table, resourcesTable.table)
+	ui.rightPane.Add(split)
+}
+
 func displayDosHeaderDetails(ui *MyAppUI, dosHeader *DOSHeader, offset uintptr) {
 
 	table, err := createTableFromStruct(dosHeader, offset)

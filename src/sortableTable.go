@@ -12,6 +12,45 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+type selectableLabel struct {
+	widget.Entry
+	originalText string
+}
+
+// newSelectableLabel creates a new selectableLabel with the given text.
+func newSelectableLabel(text string) *selectableLabel {
+	s := &selectableLabel{originalText: text}
+	// Set the text and the change-reversion hack.
+	s.Entry.MultiLine = true
+	s.Entry.SetText(text)
+	s.Entry.OnChanged = func(newText string) {
+		if newText != s.originalText {
+			s.Entry.SetText(s.originalText)
+		}
+	}
+	s.Entry.Wrapping = fyne.TextWrapWord
+	// Register the composite widget.
+	s.ExtendBaseWidget(s)
+	return s
+}
+
+// CreateRenderer overrides the renderer to remove the default border and background.
+func (s *selectableLabel) CreateRenderer() fyne.WidgetRenderer {
+	// Get the original renderer.
+	renderer := s.Entry.CreateRenderer()
+	// Get the desired background color from the theme.
+	bgColor := theme.Color(theme.ColorNameBackground)
+	// Modify any canvas.Rectangle in the renderer: remove its stroke and force its fill.
+	for _, obj := range renderer.Objects() {
+		if rect, ok := obj.(*canvas.Rectangle); ok {
+			rect.StrokeWidth = 0
+			rect.FillColor = bgColor
+			rect.StrokeColor = bgColor
+		}
+	}
+	return renderer
+}
+
 // columnType is an enum for the type of data in a column.
 type ColumnType int
 
@@ -22,6 +61,11 @@ const (
 	unsortableCol
 )
 
+type ColumnProps struct {
+	sortable   bool
+	selectable bool
+}
+
 // sortableTable wraps a widget.Table plus the underlying data slice.
 // It handles sorting when the user clicks a column header.
 type sortableTable struct {
@@ -29,18 +73,19 @@ type sortableTable struct {
 	data      [][]string
 	colWidths []float32
 	colTypes  []ColumnType
-
+	colProps  []ColumnProps
 	// Track the current sort direction per column (true=asc, false=desc)
 	sortAsc map[int]bool
 }
 
 // newSortableTable creates a new sortableTable around an existing data set.
-func newSortableTable(data [][]string, colWidths []float32, colTypes []ColumnType) *sortableTable {
+func newSortableTable(data [][]string, colWidths []float32, colTypes []ColumnType, colProps []ColumnProps) *sortableTable {
 	st := &sortableTable{
 		data:      data,
 		colWidths: colWidths,
 		sortAsc:   make(map[int]bool),
 		colTypes:  colTypes,
+		colProps:  colProps,
 	}
 
 	tbl := widget.NewTable(
@@ -73,19 +118,21 @@ func newSortableTable(data [][]string, colWidths []float32, colTypes []ColumnTyp
 				})
 				c.Objects = []fyne.CanvasObject{rect, clickable}
 			} else {
-				// Normal data row
-				rect.FillColor = theme.Color(theme.ColorNameBackground)
+				var entry fyne.CanvasObject
+				if st.colProps[id.Col].selectable {
+					entry = newSelectableLabel(text)
+				} else {
+					// Just a normal label with wrapping
+					entry = widget.NewLabel(text)
+					entry.(*widget.Label).Wrapping = fyne.TextWrapWord
+				}
+				c.Objects = []fyne.CanvasObject{rect, entry}
 
-				// Just a normal label with wrapping
-				lbl := widget.NewLabel(text)
-				lbl.Wrapping = fyne.TextWrapWord
-				c.Objects = []fyne.CanvasObject{rect, lbl}
 			}
 		},
 	)
 
 	st.table = tbl
-	// (Optionally set column widths, then measure row heights, etc.)
 	st.updateRowHeights()
 	return st
 }
@@ -93,7 +140,9 @@ func newSortableTable(data [][]string, colWidths []float32, colTypes []ColumnTyp
 // sortByColumn sorts st.data (excluding row 0, which is the header) by the given col index.
 func (st *sortableTable) sortByColumn(col int) {
 	// If this column is "unsortable", just return (do nothing)
-
+	if !st.colProps[col].sortable {
+		return
+	}
 	// Toggle the sort direction for this column
 	st.sortAsc[col] = !st.sortAsc[col]
 	ascending := st.sortAsc[col]

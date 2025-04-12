@@ -9,10 +9,12 @@ import (
 	"image/png"
 	"os"
 	"reflect"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sqweek/dialog"
 )
@@ -86,6 +88,11 @@ func InitPaneView(window fyne.Window) {
 	ui := initUIElements()
 	// Define the initial data for the tree
 	data := map[string][]string{}
+
+	var filePath string
+	var peFull *PeFull
+	var rootName string
+
 	// Create the tree widget
 	tree := widget.NewTree(
 		// Define the child nodes for each node
@@ -99,23 +106,39 @@ func InitPaneView(window fyne.Window) {
 		},
 		// Define how to create the template for branches and leaves
 		func(branch bool) fyne.CanvasObject {
+			icon := canvas.NewImageFromResource(theme.FileIcon())
+			icon.SetMinSize(fyne.NewSize(16, 16))
 			txt := canvas.NewText("", nil)
 			txt.TextSize = 12
-			return txt
+			return container.NewHBox(icon, txt)
 		},
 		// Define how to update the template for a specific node
 		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
-			txt := obj.(*canvas.Text)
+			box := obj.(*fyne.Container)
+			icon := box.Objects[0].(*canvas.Image)
+			txt := box.Objects[1].(*canvas.Text)
 			txt.Text = uid
-			txt.Refresh()
+			if strings.HasPrefix(uid, "File: ") {
+				iconImg, err := extractExeIcon(filePath)
+				if err != nil {
+					icon.Resource = theme.FileIcon()
+				} else {
+					buf := new(bytes.Buffer)
+					if err := png.Encode(buf, iconImg); err != nil {
+						icon.Resource = theme.FileIcon()
+					} else {
+						icon.Resource = fyne.NewStaticResource("exeIcon.png", buf.Bytes())
+					}
+				}
+				icon.Show()
+			} else {
+				icon.Hide()
+			}
+			box.Refresh()
 		},
 	)
 
 	ui.leftPane.Add(tree)
-	var filePath string
-
-	var peFull *PeFull
-	var rootName string
 
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("Open", func() {
@@ -253,7 +276,7 @@ func InitPaneView(window fyne.Window) {
 	window.ShowAndRun()
 }
 
-func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
+func createTableFromStruct(header any, offset uintptr, lowercaseField bool) (*sortableTable, error) {
 	// Use reflection to iterate over the struct fields
 	t := reflect.TypeOf(header)
 	v := reflect.ValueOf(header)
@@ -288,10 +311,15 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 			valueStr = fmt.Sprintf("%#x", value.Interface())
 		}
 
+		fieldStr := field.Name
+		if lowercaseField {
+			fieldStr = strings.ToLower(fieldStr)
+		}
+
 		// Instead of i, show size in hex as the "index"
 		data = append(data, []string{
 			fmt.Sprintf("0x%X", offset), // hex representation of size
-			field.Name,
+			fieldStr,
 			valueStr,
 			fmt.Sprintf("%d", size), // keep decimal bytes in the "Size" column
 		})
@@ -303,7 +331,9 @@ func createTableFromStruct(header any, offset uintptr) (*sortableTable, error) {
 
 	colWidths := []float32{90, float32(longestFieldName) * 10, 150, 100}
 	colTypes := []ColumnType{hexCol, strCol, unsortableCol, decCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{true, true}, {true, true}, {false, true}, {true, true}}
+
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }
 
 func createTableForDataDirectories(dataDirs []pe.DataDirectory, offset uintptr) (*sortableTable, error) {
@@ -329,7 +359,9 @@ func createTableForDataDirectories(dataDirs []pe.DataDirectory, offset uintptr) 
 
 	colWidths := []float32{65, float32(longestFieldName) * 10, 150, 100}
 	colTypes := []ColumnType{hexCol, strCol, hexCol, decCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{true, true}, {true, true}, {true, true}, {true, true}}
+
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }
 
 func createTableForSectionHeaders(sections []*pe.Section, offset uintptr) (*sortableTable, error) {
@@ -360,7 +392,9 @@ func createTableForSectionHeaders(sections []*pe.Section, offset uintptr) (*sort
 	colWidths := []float32{65, 80, 100, 110, 100, 100, 100, 100, 120, 120, 110}
 	colTypes := []ColumnType{hexCol, strCol, hexCol, hexCol, decCol, hexCol, hexCol, decCol,
 		hexCol, decCol, hexCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}, {true, true}}
+
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }
 
 func getOffsetArrayUint32(peFile *pe.File, fileData []byte, rva uint32, size uint32) ([]uint32, error) {
@@ -496,15 +530,16 @@ func createTableForExports(peFile *pe.File, fileData []byte, exportHeader IMAGE_
 
 	colWidths := []float32{90, 65, 100, 90, 700}
 	colTypes := []ColumnType{hexCol, hexCol, hexCol, hexCol, strCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{true, true}, {true, true}, {true, true}, {true, true}, {true, true}}
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }
 
-func createNewSortableTable(colWidths []float32, data [][]string, colTypes []ColumnType) (*sortableTable, error) {
+func createNewSortableTable(colWidths []float32, data [][]string, colTypes []ColumnType, colProps []ColumnProps) (*sortableTable, error) {
 
 	// Measure row heights (assuming measureRowsHeights supports 4 columns)
 	colHeights := measureRowsHeights(data, colWidths)
 
-	st := newSortableTable(data, colWidths, colTypes)
+	st := newSortableTable(data, colWidths, colTypes, colProps)
 
 	// Apply column widths
 	for colIndex, width := range colWidths {

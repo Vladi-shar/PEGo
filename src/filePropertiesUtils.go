@@ -6,12 +6,12 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"debug/pe"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"reflect"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -38,35 +38,35 @@ type FileProperties struct {
 	FileResources FileResources
 }
 
-func getFileType(filePath string) (string, error) {
-	pathPtr, err := windows.UTF16PtrFromString(filePath)
+func getFileType(peFull *PeFull) (string, error) {
+	optionalHdr, err := getOptionalHeader(peFull.peFile)
 	if err != nil {
 		return "", err
 	}
 
-	k32 := windows.NewLazySystemDLL("kernel32.dll")
-	getBinaryType := k32.NewProc("GetBinaryTypeW")
-
-	var binaryType uint32
-	ret, _, callErr := getBinaryType.Call(
-		uintptr(unsafe.Pointer(pathPtr)),
-		uintptr(unsafe.Pointer(&binaryType)),
-	)
-
-	if ret == 0 {
-		return "", callErr
-	}
-
-	var binaryTypeStr = ""
-	switch binaryType {
-	case 0:
-		binaryTypeStr = "PE32"
-	case 6:
-		binaryTypeStr = "PE32+ (x64)"
+	// Retrieve the Magic field from the optional header.
+	var magic uint16
+	switch hdr := optionalHdr.(type) {
+	case *pe.OptionalHeader32:
+		magic = hdr.Magic
+	case *pe.OptionalHeader64:
+		magic = hdr.Magic
 	default:
-		binaryTypeStr = "Unknown"
+		return "", fmt.Errorf("unexpected optional header type: %T", hdr)
 	}
-	return binaryTypeStr, nil
+
+	// Determine the PE type based on the Magic value.
+	var fileType string
+	switch magic {
+	case 0x10b:
+		fileType = "PE32"
+	case 0x20b:
+		fileType = "PE32+ (x64)"
+	default:
+		fileType = "Unknown PE type"
+	}
+
+	return fileType, nil
 }
 
 func getFileTimes(filePath string) (windows.Filetime, windows.Filetime, windows.Filetime, error) {
@@ -89,7 +89,7 @@ func getFileProperties(peFull *PeFull, filePath string) (FileProperties, error) 
 	var fileProperties FileProperties
 	var err error
 	fileProperties.FileName = filePath
-	fileProperties.FileType, err = getFileType(filePath)
+	fileProperties.FileType, err = getFileType(peFull)
 	if err != nil {
 		return fileProperties, err
 	}
@@ -162,7 +162,9 @@ func createTableForResources(fileResources FileResources) (*sortableTable, error
 
 	colWidths := []float32{200, float32(longestFieldName) * 30}
 	colTypes := []ColumnType{unsortableCol, unsortableCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{false, false}, {false, true}}
+
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }
 
 func createTableForProperties(fileProperties FileProperties) (*sortableTable, error) {
@@ -227,5 +229,7 @@ func createTableForProperties(fileProperties FileProperties) (*sortableTable, er
 
 	colWidths := []float32{200, float32(longestFieldName) * 30}
 	colTypes := []ColumnType{unsortableCol, unsortableCol}
-	return createNewSortableTable(colWidths, data, colTypes)
+	colProps := []ColumnProps{{false, false}, {false, true}}
+
+	return createNewSortableTable(colWidths, data, colTypes, colProps)
 }

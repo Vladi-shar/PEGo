@@ -30,7 +30,7 @@ func displayFileProperties(ui *MyAppUI, fileProperties FileProperties) {
 
 func displayDosHeaderDetails(ui *MyAppUI, dosHeader *DOSHeader, offset uintptr) {
 
-	table, err := createTableFromStruct(dosHeader, offset)
+	table, err := createTableFromStruct(dosHeader, offset, true)
 	if err != nil {
 		displayErrorOnRightPane(ui, err.Error())
 		return
@@ -44,7 +44,7 @@ func displayDosHeaderDetails(ui *MyAppUI, dosHeader *DOSHeader, offset uintptr) 
 
 func displayNtHeadersDetails(ui *MyAppUI, ntHeaders *NtHeaders, offset uintptr) {
 
-	table, err := createTableFromStruct(ntHeaders, offset)
+	table, err := createTableFromStruct(ntHeaders, offset, false)
 	if err != nil {
 		displayErrorOnRightPane(ui, err.Error())
 		return
@@ -58,7 +58,7 @@ func displayNtHeadersDetails(ui *MyAppUI, ntHeaders *NtHeaders, offset uintptr) 
 
 func displayFileHeaderDetails(ui *MyAppUI, fileHeader *pe.FileHeader, offset uintptr) {
 
-	table, err := createTableFromStruct(fileHeader, offset)
+	table, err := createTableFromStruct(fileHeader, offset, false)
 	if err != nil {
 		displayErrorOnRightPane(ui, err.Error())
 		return
@@ -72,7 +72,7 @@ func displayFileHeaderDetails(ui *MyAppUI, fileHeader *pe.FileHeader, offset uin
 
 func displayOptionalHeaderDetails(ui *MyAppUI, optHeader any, offset uintptr) {
 
-	table, err := createTableFromStruct(optHeader, offset)
+	table, err := createTableFromStruct(optHeader, offset, false)
 	if err != nil {
 		displayErrorOnRightPane(ui, err.Error())
 		return
@@ -134,7 +134,7 @@ func displayExportTableDetails(ui *MyAppUI, exportDir pe.DataDirectory, peFile *
 		displayErrorOnRightPane(ui, err.Error())
 		return
 	}
-	table, err := createTableFromStruct(exportHeader, uintptr(exportDirRawOffset))
+	table, err := createTableFromStruct(exportHeader, uintptr(exportDirRawOffset), false)
 	if err != nil {
 		displayErrorOnRightPane(ui, err.Error())
 		return
